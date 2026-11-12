@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vehicle RC Check</title>
+<style>
+  :root{--bg:#f4f6fb;--card:#fff;--ink:#1b2333;--mut:#6b7488;--pri:#024ef3;--ok:#0a8f4d;--bad:#d62839}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+  .wrap{max-width:720px;margin:0 auto;padding:20px 16px 60px}
+  h1{font-size:22px;margin:8px 0 4px}
+  p.sub{margin:0 0 18px;color:var(--mut);font-size:14px}
+  .card{background:var(--card);border-radius:14px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.07);margin-bottom:14px}
+  input[type=text]{width:100%;font-size:20px;letter-spacing:2px;text-transform:uppercase;padding:12px;border:2px solid #d8deea;border-radius:10px}
+  input[type=text]:focus{outline:none;border-color:var(--pri)}
+  label.c{display:flex;gap:8px;font-size:13px;color:var(--mut);margin:12px 0;align-items:flex-start}
+  button{width:100%;background:var(--pri);color:#fff;border:0;border-radius:10px;font-size:16px;padding:13px;font-weight:600;cursor:pointer}
+  button:disabled{opacity:.5}
+  .badge{display:inline-block;padding:4px 10px;border-radius:99px;font-size:12px;font-weight:700;color:#fff}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;margin-top:10px}
+  .grid div small{display:block;color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.4px}
+  .grid div span{font-size:14px;word-break:break-word}
+  .full{grid-column:1/-1}
+  h3{margin:0 0 4px;font-size:15px}
+  .err{color:var(--bad);font-size:14px}
+  .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .plate{font-size:22px;font-weight:800;letter-spacing:2px}
+  .print{background:#eef2ff;color:var(--pri);margin-top:6px}
+  @media print{.noprint{display:none}body{background:#fff}.card{box-shadow:none;border:1px solid #ccc}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Vehicle RC Check</h1>
+  <p class="sub">Live registration details from the Parivahan database.</p>
+
+  <div class="card noprint">
+    <input id="reg" type="text" placeholder="JK02AB1234" maxlength="14" autocomplete="off">
+    <label class="c"><input id="consent" type="checkbox">
+      <span>I confirm the vehicle owner has given consent to check these details (DPDP Act, 2023).</span></label>
+    <button id="go">Check RC</button>
+    <div id="msg" class="err" style="margin-top:10px"></div>
+  </div>
+
+  <div id="out"></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const ok = (v) => v !== null && v !== undefined && v !== "" && !String(v).startsWith("1800-01-01");
+
+function fld(label, v, full) {
+  if (!ok(v)) return "";
+  return `<div class="${full ? "full" : ""}"><small>${label}</small><span>${esc(v)}</span></div>`;
+}
+function section(title, rows) {
+  const body = rows.join("");
+  return body ? `<div class="card"><h3>${title}</h3><div class="grid">${body}</div></div>` : "";
+}
+function expiry(d) {
+  if (!ok(d)) return null;
+  const left = Math.ceil((new Date(d) - new Date()) / 86400000);
+  return left < 0 ? `${d} (expired)` : `${d} (${left} days left)`;
+}
+
+function render(d) {
+  if (!d.valid) {
+    $("out").innerHTML = `<div class="card err">${esc(d.message || "Registration number not found")}</div>`;
+    return;
+  }
+  const active = /ACTIVE/i.test(d.status || "");
+  $("out").innerHTML =
+    `<div class="card"><div class="top">
+       <div><div class="plate">${esc($("reg").value.toUpperCase())}</div>
+       <div style="color:var(--mut);font-size:14px">${esc(d.makerModel || "")}</div></div>
+       <span class="badge" style="background:${active ? "var(--ok)" : "var(--bad)"}">${esc(d.status || "UNKNOWN")}</span>
+     </div></div>` +
+    section("Owner", [
+      fld("Owner", d.owner), fld("Owner no.", d.ownerNumber), fld("Father", d.father),
+      fld("Mobile", d.mobile), fld("Current address", d.currentAddress, 1), fld("Permanent address", d.permanentAddress, 1),
+    ]) +
+    section("Vehicle", [
+      fld("Maker", d.makerDescription, 1), fld("Model", d.makerModel), fld("Variant", d.makerVariant),
+      fld("Category", d.categoryDescription || d.category), fld("Fuel", d.fuelType), fld("Colour", d.colorType),
+      fld("Body type", d.bodyType), fld("Emission norms", d.normsType), fld("Manufactured", d.manufactured),
+      fld("Registered", d.registered), fld("RTO", d.rto, 1), fld("Chassis no.", d.chassisNumber), fld("Engine no.", d.engineNumber),
+      fld("Cubic capacity", d.cubicCapacity), fld("Cylinders", d.cylinders), fld("Seating", d.seatingCapacity),
+      fld("Unladen weight", d.unladenWeight), fld("Gross weight", d.grossWeight), fld("Wheelbase", d.wheelBase),
+      fld("Commercial", d.commercial === undefined ? null : d.commercial ? "Yes" : "No"),
+    ]) +
+    section("Validity", [
+      fld("Insurance", d.insuranceProvider), fld("Policy no.", d.insurancePolicyNumber), fld("Insurance valid till", expiry(d.insuranceUpto)),
+      fld("Fitness valid till", expiry(d.fitnessUpto)), fld("PUC no.", d.pollutionCertificateNumber), fld("PUC valid till", expiry(d.pollutionCertificateUpto)),
+      fld("Tax upto", d.taxUpto), fld("Tax paid upto", d.taxPaidUpto),
+      fld("Permit no.", d.permitNumber), fld("Permit valid till", expiry(d.permitUpto)),
+      fld("National permit", d.nationalPermitNumber), fld("National permit till", expiry(d.nationalPermitUpto)),
+    ]) +
+    section("Finance & status", [
+      fld("Financed", d.financed ? "Yes" : "No"), fld("Lender", d.lender),
+      fld("Blacklist", d.blacklistStatus), fld("NOC", d.nocDetails, 1), fld("Challans", d.challanDetails, 1),
+    ]) +
+    `<button class="print noprint" onclick="window.print()">Print / Save PDF</button>`;
+}
+
+$("go").onclick = async () => {
+  $("msg").textContent = ""; $("out").innerHTML = "";
+  const reg = $("reg").value.trim();
+  if (!reg) return ($("msg").textContent = "Enter a registration number");
+  if (!$("consent").checked) return ($("msg").textContent = "Owner's consent is required");
+  $("go").disabled = true; $("go").textContent = "Checking...";
+  try {
+    const r = await fetch("/api/rc", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reg, consent: true }),
+    });
+    const d = await r.json();
+    if (!r.ok) $("msg").textContent = d.message || "Something went wrong";
+    else render(d);
+  } catch { $("msg").textContent = "Network error"; }
+  $("go").disabled = false; $("go").textContent = "Check RC";
+};
+$("reg").addEventListener("keydown", (e) => e.key === "Enter" && $("go").click());
+</script>
+</body>
+</html>
